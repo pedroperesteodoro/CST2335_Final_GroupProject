@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 
-void main() {
+import 'data/database_holder.dart';
+import 'screens/pet_owner_screen.dart';
+import 'screens/pet_screen.dart';
+import 'screens/vaccine_screen.dart';
+import 'screens/veterinarian_screen.dart';
+
+/// App entry: initializes SQLite (Floor) before any screen touches the DAOs.
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await DatabaseHolder.init();
   runApp(const MyApp());
 }
 
@@ -22,22 +31,12 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// Main screen: four buttons, each opens a landing area for one team topic.
+/// Main screen: four buttons — each opens one teammate’s topic (implemented here as base scaffolds).
 ///
 /// Per course notes on responsive layouts, this menu stays a single column;
-/// master–detail (list beside details) applies on feature pages when
-/// `(width > height) && (width > 720)`, not on this launcher.
+/// master–detail applies on each feature page when `(width > height) && (width > 720)`.
 class MainMenuPage extends StatelessWidget {
   const MainMenuPage({super.key});
-
-  /// Routes to a placeholder page for a module until that feature is merged.
-  void _openModule(BuildContext context, String title) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => ModuleLandingPage(title: title),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,54 +54,42 @@ class MainMenuPage extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               children: [
                 FilledButton(
-                  onPressed: () => _openModule(context, 'Pet Owners'),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const PetOwnerScreen()),
+                    );
+                  },
                   child: const Text('Pet Owners'),
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: () => _openModule(context, 'Pets'),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const PetScreen()),
+                    );
+                  },
                   child: const Text('Pets'),
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: () => _openModule(context, 'Vaccines'),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const VaccineScreen()),
+                    );
+                  },
                   child: const Text('Vaccines'),
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: () => _openModule(context, 'Veterinarians'),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const VeterinarianScreen()),
+                    );
+                  },
                   child: const Text('Veterinarians'),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Temporary landing page for a module. Replace with each member’s real screen.
-class ModuleLandingPage extends StatelessWidget {
-  /// Title shown in the app bar (which module this is).
-  const ModuleLandingPage({required this.title, super.key});
-
-  /// Display name for this branch of the app.
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            '$title — implementation goes here.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
       ),

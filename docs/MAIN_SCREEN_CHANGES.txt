@@ -1,68 +1,124 @@
-CST2335 — Main screen only (4 buttons): what changed
-=====================================================
-Date: aligned with SQLite.txt and Responsive Layouts.txt course notes.
+CST2335 — FinalProject change log (main menu, database, module screens, docs)
+=============================================================================
+Aligned with SQLite.txt and Responsive Layouts.txt course notes.
+Package name: final_project (pubspec). Display name: FinalProject.
+
+==============================================================================
+PHASE 1 — Main launcher only (four buttons)
+==============================================================================
 
 Goal
 ----
-Reduce the previous lab (shopping list with TextFields, ListView, long-press
-delete dialog) to a single launcher: one main screen with four buttons that
-open a simple placeholder page per topic, ready for teammates to replace with
-real Pet Owner / Pet / Vaccine / Veterinarian features.
+Replace the old lab shopping-list demo with a home screen that has four buttons
+matching the four final-project topics.
 
-Files modified
---------------
+What changed (phase 1)
+----------------------
+- lib/main.dart: Removed shopping list / TextFields / in-memory list / long-press
+  delete. Added MainMenuPage with four FilledButtons and Material 3 theme.
+- Main menu layout: SafeArea, Center, ConstrainedBox (maxWidth 400), ListView +
+  padding for readable buttons on phones and wide windows.
 
-1) lib/main.dart
-   - REMOVED: Shopping list state (_HomePageState), item/quantity controllers,
-     in-memory list, ListView.builder, long-press AlertDialog delete flow,
-     and flutter/services import (FilteringTextInputFormatter).
-   - ADDED: MaterialApp theme (seed color, Material 3).
-   - RENAMED conceptually: HomePage -> MainMenuPage (StatelessWidget; no list
-     state on the menu).
-   - ADDED: Four FilledButtons — Pet Owners, Pets, Vaccines, Veterinarians.
-     Each calls Navigator.push to ModuleLandingPage with a title string.
-   - ADDED: ModuleLandingPage — minimal Scaffold with AppBar + centered text
-     so each button "launches a page" as required by the final project spec.
-   - ADDED: Dartdoc (///) comments on MyApp, MainMenuPage, ModuleLandingPage,
-     and the title field, per project Dartdoc requirement.
-   - RESPONSIVE LAYOUTS.txt: Main menu uses SafeArea, Center, ConstrainedBox
-     (maxWidth 400), ListView + padding so buttons stay readable on phones and
-     wide screens. The course master–detail pattern (Row with Expanded, width
-     > height && width > 720) is documented in code comments as applying to
-     each module’s list/detail screen later — not to this four-button menu.
+==============================================================================
+PHASE 2 — Project rename (FinalProject / final_project)
+==============================================================================
 
-2) pubspec.yaml
-   - REMOVED: encrypted_shared_preferences, shared_preferences (not used by
-     the launcher; add back per module when implementing EncryptedSharedPreferences).
-   - REMOVED: dev_dependency url_launcher (unused in lib/).
-   - REMOVED: assets: images/light-bulb.jpg, question-mark.jpg, stop-sign.jpg
-     — those paths had no matching files in the project and would break builds.
-   - UPDATED: description string to reflect the group project.
-   - NOTE: When you add Floor/SQLite per SQLite.txt, add floor, floor_generator,
-     build_runner under dependencies / dev_dependencies and run build_runner.
+- pubspec.yaml: name set to final_project (Dart package naming rules).
+- lib/main.dart and tests: MaterialApp / AppBar title uses "FinalProject".
+- Android, iOS, web, Windows, Linux, macOS runner metadata updated to show
+  FinalProject where the user sees the app name; Kotlin package moved to
+  com.example.final_project; CMake / binary names use final_project where the
+  toolchain requires lowercase identifiers.
+- IDE: final_project.iml, android/final_project_android.iml, .idea/modules.xml.
 
-3) test/widget_test.dart
-   - REPLACED: Old counter smoke test (0/1, Icons.add) which did not match any
-     code in main.dart.
-   - NEW: Pumps MyApp and asserts AppBar title "Veterinary Clinic" and the four
-     button labels are present.
+==============================================================================
+PHASE 3 — Floor SQLite database (SQLite.txt)
+==============================================================================
 
-Files not changed
------------------
-- analysis_options.yaml (unchanged)
+Goal
+----
+Add a single SQLite database shared by all modules, using Floor (see course
+SQLite.txt: entities, @dao, @Database, build_runner).
 
-How this maps to course notes
------------------------------
-- SQLite.txt: No database on the main menu yet. Each teammate adds Floor
-  entities, DAO, database class, and initState loading per that document when
-  implementing their ListView + persistence.
-- Responsive Layouts.txt: reactiveLayout / master–detail belongs on each
-  feature page (list left, details right on tablet/desktop); phone navigates
-  full-screen. The main screen stays a simple button column as above.
+Dependencies (pubspec.yaml)
+----------------------------
+- dependencies: floor, sqflite (Floor tutorial style; sqflite is explicit for clarity).
+- dev_dependencies: floor_generator, build_runner.
 
-Next steps (for your group, not done in this edit)
---------------------------------------------------
-- Replace ModuleLandingPage with each member’s real page.
-- Re-add encrypted_shared_preferences, shared_preferences, floor, etc. in
-  pubspec.yaml as each module needs them.
-- Generate Dartdoc output into a Dartdoc folder when the course requires it.
+New / generated files
+---------------------
+- lib/data/entities/pet_owner.dart      — PetOwner table (pet_owners).
+- lib/data/entities/pet.dart          — Pet table (pets).
+- lib/data/entities/vaccine.dart       — Vaccine table (vaccines).
+- lib/data/entities/veterinarian.dart  — Veterinarian table (veterinarians).
+- lib/data/daos/*.dart                 — One DAO per entity (findAll, insert,
+                                         update, delete).
+- lib/data/app_database.dart           — @Database(version: 1, entities: [...]).
+- lib/data/app_database.g.dart         — GENERATED; do not edit by hand.
+- lib/data/database_holder.dart        — Opens vet_clinic.db once via
+                                         $FloorAppDatabase.databaseBuilder(...).
+
+Regenerate after changing entities or DAOs:
+    dart run build_runner build --delete-conflicting-outputs
+
+==============================================================================
+PHASE 4 — Base screens for each module + responsive details (Responsive Layouts.txt)
+==============================================================================
+
+New files
+---------
+- lib/widgets/reactive_layout.dart
+    shouldShowMasterDetailSideBySide(context) → true when width > height AND
+    width > 720 (course master–detail rule).
+
+- lib/screens/pet_owner_screen.dart
+    Form fields (first/last/address/DOB/optional insurance), Add → insert DAO,
+    ListView, tap → details; wide: Row list | details; narrow: list then detail
+    with Back. Help AlertDialog; SnackBars; delete confirmation AlertDialog.
+
+- lib/screens/pet_screen.dart
+    Same pattern for pets (name, birthday, species, colour, owner ID).
+
+- lib/screens/vaccine_screen.dart
+    Same pattern for vaccines (name, dosage, lot, expiration).
+
+- lib/screens/veterinarian_screen.dart
+    Same pattern for veterinarians (name, birthday, address, university).
+
+lib/main.dart (current behaviour)
+---------------------------------
+- main() is async: WidgetsFlutterBinding.ensureInitialized(), then
+  await DatabaseHolder.init(), then runApp(MyApp()).
+- MainMenuPage: each button Navigator.push to the matching screen widget above
+  (no placeholder ModuleLandingPage).
+
+test/widget_test.dart
+-----------------------
+- TestWidgetsFlutterBinding.ensureInitialized().
+- setUpAll: await DatabaseHolder.init() so SQLite is ready before pumpWidget.
+- Asserts main menu shows "FinalProject" and the four module button labels.
+
+==============================================================================
+PHASE 5 — Diagram (docs)
+==============================================================================
+
+- docs/program_activity.puml
+    PlantUML activity diagram: launch → DB init → main menu → module flow
+    (load list, add, select details, delete, help). Open with a PlantUML
+    plugin or online renderer.
+
+==============================================================================
+What is still for the course / teammates (not fully implemented here)
+==============================================================================
+
+- EncryptedSharedPreferences per activity (add packages back to pubspec when used).
+- Full assignment polish: localization, ActionBar-style menus everywhere,
+  Dartdoc HTML output in a Dartdoc folder, update flows on the same form as add,
+  copy-previous-row behaviour, etc.
+- Web: Floor needs extra sqflite_web setup per SQLite.txt if you target browser.
+
+==============================================================================
+Files not listed above
+==============================================================================
+
+- analysis_options.yaml — unchanged unless your team adds stricter lints.

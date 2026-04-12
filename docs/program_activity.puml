@@ -1,0 +1,61 @@
+@startuml FinalProject_activity
+title FinalProject — high-level activity (user flow)
+
+start
+
+:Launch app;
+
+:Initialize Floor database\n(`DatabaseHolder.init` → `vet_clinic.db`);
+
+:Show main menu\n(4 module buttons);
+
+repeat
+  :User picks module\n(Pet Owners / Pets / Vaccines / Veterinarians);
+
+  :Open module screen;
+
+  :Load rows from SQLite\n(DAO `findAll` → ListView);
+
+  repeat
+    if (Add new row?) then (yes)
+      :Validate fields;
+      if (Valid?) then (yes)
+        :DAO insert;
+        :Refresh list;
+      else (no)
+        :Show SnackBar error;
+      endif
+    else (no)
+    endif
+
+    if (Select list item?) then (yes)
+      if (Wide screen\nmaster–detail?) then (yes)
+        :Show details beside list;
+      else (phone)
+        :Show details full width\n(Back returns to list);
+      endif
+    endif
+
+    if (Delete from details?) then (yes)
+      :Confirm AlertDialog;
+      if (Confirmed?) then (yes)
+        :DAO delete;
+        :Refresh list;
+      endif
+    endif
+
+    if (Help icon?) then (yes)
+      :Show instructions AlertDialog;
+    endif
+
+  repeat while (Stay on module?) is (yes)
+  ->no;
+
+  :Navigate back to main menu;
+
+repeat while (Quit app?) is (no)
+->yes;
+
+stop
+
+@enduml
