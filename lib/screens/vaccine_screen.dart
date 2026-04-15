@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../data/database_holder.dart';
 import '../data/entities/vaccine.dart';
-import '../widgets/reactive_layout.dart';
+import '../data/vaccine_previous_prefs.dart';
 
-/// **Vaccines** module — inventory-style rows in SQLite.
+/// **Vaccines** module — list + SQLite + add/edit form page.
 class VaccineScreen extends StatefulWidget {
   const VaccineScreen({super.key});
 
@@ -14,17 +14,142 @@ class VaccineScreen extends StatefulWidget {
 
 class _VaccineScreenState extends State<VaccineScreen> {
   List<Vaccine> _rows = [];
-  Vaccine? _selected;
-
-  final _name = TextEditingController();
-  final _dosage = TextEditingController();
-  final _lot = TextEditingController();
-  final _exp = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _reload();
+  }
+
+  Future<void> _reload() async {
+    final list = await DatabaseHolder.instance.vaccineDao.findAll();
+    if (!mounted) return;
+    setState(() => _rows = list);
+  }
+
+  Future<void> _openAdd() async {
+    Vaccine? prefill;
+    if (await VaccinePreviousPrefs.hasPrevious()) {
+      if (!mounted) return;
+      final useCopy = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('New vaccine'),
+          content: const Text(
+            'Copy fields from your previous vaccine entry, or start with a blank form?',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton.tonal(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Start blank'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Copy previous'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (useCopy == null) return;
+      if (useCopy) {
+        prefill = await VaccinePreviousPrefs.loadTemplate();
+      }
+    }
+    if (!mounted) return;
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => VaccineFormPage(prefill: prefill),
+      ),
+    );
+    if (changed == true && mounted) await _reload();
+  }
+
+  Future<void> _openEdit(Vaccine v) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => VaccineFormPage(existing: v),
+      ),
+    );
+    if (changed == true && mounted) await _reload();
+  }
+
+  void _help() {
+    showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('How to use — Vaccines'),
+        content: const Text(
+          'Use Add to create a vaccine, or tap a row to edit or delete. '
+          'List order follows expiration in the database query.',
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Vaccines'),
+        actions: [IconButton(icon: const Icon(Icons.help_outline), onPressed: _help)],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openAdd,
+        tooltip: 'Add vaccine',
+        child: const Icon(Icons.add),
+      ),
+      body: _rows.isEmpty
+          ? const Center(child: Text('No vaccines yet.'))
+          : ListView.builder(
+              padding: const EdgeInsets.only(bottom: 88),
+              itemCount: _rows.length,
+              itemBuilder: (context, i) {
+                final v = _rows[i];
+                return ListTile(
+                  title: Text(v.name),
+                  subtitle: Text('${v.dosage} · Lot ${v.lotNumber} · exp ${v.expirationDate}'),
+                  onTap: () => _openEdit(v),
+                );
+              },
+            ),
+    );
+  }
+}
+
+/// Create or edit a [Vaccine]. Pass [existing] for edit mode, or [prefill] when adding with copied fields.
+class VaccineFormPage extends StatefulWidget {
+  const VaccineFormPage({super.key, this.existing, this.prefill})
+      : assert(existing == null || prefill == null);
+
+  final Vaccine? existing;
+  final Vaccine? prefill;
+
+  @override
+  State<VaccineFormPage> createState() => _VaccineFormPageState();
+}
+
+class _VaccineFormPageState extends State<VaccineFormPage> {
+  final _name = TextEditingController();
+  final _dosage = TextEditingController();
+  final _lot = TextEditingController();
+  final _exp = TextEditingController();
+
+  bool get _isEdit => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final Vaccine? seed = widget.existing ?? widget.prefill;
+    if (seed != null) {
+      _name.text = seed.name;
+      _dosage.text = seed.dosage;
+      _lot.text = seed.lotNumber;
+      _exp.text = seed.expirationDate;
+    }
   }
 
   @override
@@ -36,13 +161,7 @@ class _VaccineScreenState extends State<VaccineScreen> {
     super.dispose();
   }
 
-  Future<void> _reload() async {
-    final list = await DatabaseHolder.instance.vaccineDao.findAll();
-    if (!mounted) return;
-    setState(() => _rows = list);
-  }
-
-  Future<void> _add() async {
+  bool _validateFields() {
     final name = _name.text.trim();
     final dosage = _dosage.text.trim();
     final lot = _lot.text.trim();
@@ -51,141 +170,103 @@ class _VaccineScreenState extends State<VaccineScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('All vaccine fields are required.')),
       );
-      return;
+      return false;
     }
-    await DatabaseHolder.instance.vaccineDao.insertVaccine(
-      Vaccine(name: name, dosage: dosage, lotNumber: lot, expirationDate: exp),
-    );
-    _name.clear();
-    _dosage.clear();
-    _lot.clear();
-    _exp.clear();
-    await _reload();
+    return true;
+  }
+
+  Future<void> _submitAdd() async {
+    if (!_validateFields()) return;
+    final name = _name.text.trim();
+    final dosage = _dosage.text.trim();
+    final lot = _lot.text.trim();
+    final exp = _exp.text.trim();
+    final row = Vaccine(name: name, dosage: dosage, lotNumber: lot, expirationDate: exp);
+    await DatabaseHolder.instance.vaccineDao.insertVaccine(row);
+    await VaccinePreviousPrefs.saveLastCreated(row);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaccine saved.')));
+    Navigator.of(context).pop(true);
   }
 
-  void _help() {
-    showDialog<void>(
+  Future<void> _submitUpdate() async {
+    if (!_validateFields()) return;
+    final id = widget.existing!.id;
+    if (id == null) return;
+    final name = _name.text.trim();
+    final dosage = _dosage.text.trim();
+    final lot = _lot.text.trim();
+    final exp = _exp.text.trim();
+    await DatabaseHolder.instance.vaccineDao.updateVaccine(
+      Vaccine(id: id, name: name, dosage: dosage, lotNumber: lot, expirationDate: exp),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaccine updated.')));
+    Navigator.of(context).pop(true);
+  }
+
+  Future<void> _confirmDelete() async {
+    final v = widget.existing!;
+    final ok = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('How to use — Vaccines'),
-        content: const Text('Record name, dosage, lot, and expiry. List sorts by expiration in the DAO query.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
-      ),
-    );
-  }
-
-  Widget _list() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            children: [
-              TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder())),
-              const SizedBox(height: 6),
-              TextField(controller: _dosage, decoration: const InputDecoration(labelText: 'Dosage', border: OutlineInputBorder())),
-              const SizedBox(height: 6),
-              TextField(controller: _lot, decoration: const InputDecoration(labelText: 'Lot #', border: OutlineInputBorder())),
-              const SizedBox(height: 6),
-              TextField(controller: _exp, decoration: const InputDecoration(labelText: 'Expiration (YYYY-MM-DD)', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              FilledButton(onPressed: _add, child: const Text('Add vaccine')),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: _rows.isEmpty
-              ? const Center(child: Text('No vaccines yet.'))
-              : ListView.builder(
-                  itemCount: _rows.length,
-                  itemBuilder: (context, i) {
-                    final v = _rows[i];
-                    return ListTile(
-                      title: Text(v.name),
-                      subtitle: Text('Lot ${v.lotNumber} · exp ${v.expirationDate}'),
-                      onTap: () => setState(() => _selected = v),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _detail() {
-    final v = _selected;
-    if (v == null) return const Center(child: Text('Select a vaccine.'));
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Details', style: Theme.of(context).textTheme.titleLarge),
-          Text('Name: ${v.name}'),
-          Text('Dosage: ${v.dosage}'),
-          Text('Lot: ${v.lotNumber}'),
-          Text('Expires: ${v.expirationDate}'),
-          const Spacer(),
-          FilledButton.tonal(
-            onPressed: () {
-              showDialog<void>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Delete vaccine?'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.pop(ctx);
-                        await DatabaseHolder.instance.vaccineDao.deleteVaccine(v);
-                        setState(() => _selected = null);
-                        await _reload();
-                      },
-                      child: const Text('Delete'),
-                    ),
-                  ],
-                ),
-              );
-            },
-            child: const Text('Delete'),
-          ),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete vaccine?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
         ],
       ),
     );
+    if (ok != true || !mounted) return;
+    await DatabaseHolder.instance.vaccineDao.deleteVaccine(v);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaccine deleted.')));
+    Navigator.of(context).pop(true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final wide = shouldShowMasterDetailSideBySide(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Vaccines'),
-        actions: [IconButton(icon: const Icon(Icons.help_outline), onPressed: _help)],
+        title: Text(_isEdit ? 'Edit vaccine' : 'Add vaccine'),
       ),
-      body: wide
-          ? Row(
-              children: [
-                Expanded(flex: 5, child: _list()),
-                const VerticalDivider(width: 1),
-                Expanded(flex: 5, child: _detail()),
-              ],
-            )
-          : _selected == null
-              ? _list()
-              : Column(
-                  children: [
-                    TextButton.icon(
-                      onPressed: () => setState(() => _selected = null),
-                      icon: const Icon(Icons.arrow_back),
-                      label: const Text('Back'),
-                    ),
-                    Expanded(child: _detail()),
-                  ],
-                ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _dosage,
+              decoration: const InputDecoration(labelText: 'Dosage', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _lot,
+              decoration: const InputDecoration(labelText: 'Lot #', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _exp,
+              decoration: const InputDecoration(
+                labelText: 'Expiration (YYYY-MM-DD)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isEdit) ...[
+              FilledButton(onPressed: _submitUpdate, child: const Text('Update')),
+              const SizedBox(height: 8),
+              FilledButton.tonal(onPressed: _confirmDelete, child: const Text('Delete')),
+            ] else
+              FilledButton(onPressed: _submitAdd, child: const Text('Add vaccine')),
+          ],
+        ),
+      ),
     );
   }
 }
