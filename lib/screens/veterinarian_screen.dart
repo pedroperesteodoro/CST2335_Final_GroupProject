@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-
+import 'package:encrypted_shared_preferences/encrypted_shared_preferences.dart';
+import '../app_localizations.dart';
+import '../main.dart';
 import '../data/database_holder.dart';
 import '../data/entities/veterinarian.dart';
 import '../widgets/reactive_layout.dart';
+
 
 /// **Veterinarians** module — staff records in SQLite.
 class VeterinarianScreen extends StatefulWidget {
@@ -20,12 +23,19 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
   final _birthday = TextEditingController();
   final _address = TextEditingController();
   final _university = TextEditingController();
+  final _prefs = EncryptedSharedPreferences();
+  final _eName = TextEditingController();
+  final _eBirthday = TextEditingController();
+  final _eAddress = TextEditingController();
+  final _eUniversity = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _reload();
+    _offerCopyPrevious();
   }
+
 
   @override
   void dispose() {
@@ -33,6 +43,10 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
     _birthday.dispose();
     _address.dispose();
     _university.dispose();
+    _eName.dispose();
+    _eBirthday.dispose();
+    _eAddress.dispose();
+    _eUniversity.dispose();
     super.dispose();
   }
 
@@ -41,6 +55,42 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
     if (!mounted) return;
     setState(() => _rows = list);
   }
+
+  Future<void> _saveToPrefs() async {
+    await _prefs.setString('vet_name', _name.text.trim());
+    await _prefs.setString('vet_birthday', _birthday.text.trim());
+    await _prefs.setString('vet_address', _address.text.trim());
+      await _prefs.setString('vet_university', _university.text.trim());
+  }
+
+  Future<void> _offerCopyPrevious() async {
+    final name = await _prefs.getString('vet_name');
+    if (name.isEmpty) return;
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (c) =>
+          AlertDialog(
+            title: const Text('Copy previous entry?'),
+            content: Text('Fill fields with last saved: $name?'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(c), child: const Text('No')),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(c);
+                  _name.text = name;
+                  _birthday.text = await _prefs.getString('vet_birthday');
+                  _address.text = await _prefs.getString('vet_address');
+                  _university.text = await _prefs.getString('vet_university');
+                },
+                child: const Text('Yes'),
+              ),
+            ],
+          ),
+    );
+  }
+
 
   Future<void> _add() async {
     final name = _name.text.trim();
@@ -53,6 +103,7 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
       );
       return;
     }
+    await _saveToPrefs();
     await DatabaseHolder.instance.veterinarianDao.insertVeterinarian(
       Veterinarian(name: name, birthday: bday, address: addr, university: uni),
     );
@@ -65,6 +116,28 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veterinarian saved.')));
   }
 
+  Future<void> _update() async {
+    final v = _selected;
+    if (v == null) return;
+    final name = _eName.text.trim();
+    final bday = _eBirthday.text.trim();
+    final addr = _eAddress.text.trim();
+    final uni = _eUniversity.text.trim();
+    if (name.isEmpty || bday.isEmpty || addr.isEmpty || uni.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All fields are required.')),
+      );
+      return;
+    }
+    await DatabaseHolder.instance.veterinarianDao.updateVeterinarian(
+      Veterinarian(id: v.id, name: name, birthday: bday, address: addr, university: uni),
+    );
+    await _reload();
+    if (!mounted) return;
+    setState(() => _selected = null);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veterinarian updated.')));
+  }
+
   void _help() {
     showDialog<void>(
       context: context,
@@ -75,6 +148,7 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
       ),
     );
   }
+  String _t(String key) => AppLocalizations.of(context)?.translate(key) ?? key;
 
   Widget _list() {
     return Column(
@@ -119,17 +193,27 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
   Widget _detail() {
     final v = _selected;
     if (v == null) return const Center(child: Text('Select a veterinarian.'));
+    _eName.text = v.name;
+    _eBirthday.text = v.birthday;
+    _eAddress.text = v.address;
+    _eUniversity.text = v.university;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('Details', style: Theme.of(context).textTheme.titleLarge),
-          Text('Name: ${v.name}'),
-          Text('Birthday: ${v.birthday}'),
-          Text('Address: ${v.address}'),
-          Text('University: ${v.university}'),
+          const SizedBox(height: 8),
+          TextField(controller: _eName, decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder())),
+          const SizedBox(height: 6),
+          TextField(controller: _eBirthday, decoration: const InputDecoration(labelText: 'Birthday', border: OutlineInputBorder())),
+          const SizedBox(height: 6),
+          TextField(controller: _eAddress, decoration: const InputDecoration(labelText: 'Address', border: OutlineInputBorder())),
+          const SizedBox(height: 6),
+          TextField(controller: _eUniversity, decoration: const InputDecoration(labelText: 'University', border: OutlineInputBorder())),
           const Spacer(),
+          FilledButton(onPressed: _update, child: const Text('Update')),
+          const SizedBox(height: 6),
           FilledButton.tonal(
             onPressed: () {
               showDialog<void>(
@@ -163,9 +247,24 @@ class _VeterinarianScreenState extends State<VeterinarianScreen> {
     final wide = shouldShowMasterDetailSideBySide(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Veterinarians'),
-        actions: [IconButton(icon: const Icon(Icons.help_outline), onPressed: _help)],
+        title: Text(_t('veterinarians')),
+        actions: [
+          IconButton(
+                icon: const Icon(Icons.language),
+            onPressed: () {
+              final current = Localizations.localeOf(context);
+              MyApp.setLocale(
+                context,
+                current.languageCode == 'en'
+                    ? const Locale('fr')
+                    : const Locale('en'),
+                );
+              },
+          ),
+          IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
+        ],
       ),
+
       body: wide
           ? Row(
               children: [
