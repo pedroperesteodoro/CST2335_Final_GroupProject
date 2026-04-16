@@ -4,7 +4,8 @@ import '../data/database_holder.dart';
 import '../data/entities/vaccine.dart';
 import '../data/vaccine_previous_prefs.dart';
 
-/// **Vaccines** module — list + SQLite + add/edit form page.
+/// This is the main vaccines screen.
+/// It shows the vaccine list and an add button.
 class VaccineScreen extends StatefulWidget {
   const VaccineScreen({super.key});
 
@@ -13,22 +14,29 @@ class VaccineScreen extends StatefulWidget {
 }
 
 class _VaccineScreenState extends State<VaccineScreen> {
+  // This list holds vaccines loaded from the database.
   List<Vaccine> _rows = [];
 
   @override
   void initState() {
     super.initState();
+    // Load data when screen opens.
     _reload();
   }
 
   Future<void> _reload() async {
+    // Ask DAO for all vaccines.
     final list = await DatabaseHolder.instance.vaccineDao.findAll();
     if (!mounted) return;
+    // Refresh UI with latest list.
     setState(() => _rows = list);
   }
 
   Future<void> _openAdd() async {
+    // This will hold copied values if user chooses "Copy previous".
     Vaccine? prefill;
+
+    // If we have saved previous values, ask user which mode they want.
     if (await VaccinePreviousPrefs.hasPrevious()) {
       if (!mounted) return;
       final useCopy = await showDialog<bool>(
@@ -53,26 +61,35 @@ class _VaccineScreenState extends State<VaccineScreen> {
         ),
       );
       if (!mounted) return;
+      // User canceled the add flow.
       if (useCopy == null) return;
+      // User wants copied values.
       if (useCopy) {
         prefill = await VaccinePreviousPrefs.loadTemplate();
       }
     }
     if (!mounted) return;
+
+    // Open the same form page in add mode.
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => VaccineFormPage(prefill: prefill),
       ),
     );
+
+    // If form saved/deleted something, reload list.
     if (changed == true && mounted) await _reload();
   }
 
   Future<void> _openEdit(Vaccine v) async {
+    // Open the same form page in edit mode.
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => VaccineFormPage(existing: v),
       ),
     );
+
+    // If form saved/deleted something, reload list.
     if (changed == true && mounted) await _reload();
   }
 
@@ -97,11 +114,14 @@ class _VaccineScreenState extends State<VaccineScreen> {
         title: const Text('Vaccines'),
         actions: [IconButton(icon: const Icon(Icons.help_outline), onPressed: _help)],
       ),
+      // Floating add button.
       floatingActionButton: FloatingActionButton(
         onPressed: _openAdd,
         tooltip: 'Add vaccine',
         child: const Icon(Icons.add),
       ),
+      // Show empty text when there is no data.
+      // Otherwise show one list row per vaccine.
       body: _rows.isEmpty
           ? const Center(child: Text('No vaccines yet.'))
           : ListView.builder(
@@ -120,7 +140,9 @@ class _VaccineScreenState extends State<VaccineScreen> {
   }
 }
 
-/// Create or edit a [Vaccine]. Pass [existing] for edit mode, or [prefill] when adding with copied fields.
+/// This page is used for both add and edit.
+/// - existing: edit mode
+/// - prefill: add mode with copied previous values
 class VaccineFormPage extends StatefulWidget {
   const VaccineFormPage({super.key, this.existing, this.prefill})
       : assert(existing == null || prefill == null);
@@ -133,18 +155,24 @@ class VaccineFormPage extends StatefulWidget {
 }
 
 class _VaccineFormPageState extends State<VaccineFormPage> {
+  // Controllers store what user types in each text box.
   final _name = TextEditingController();
   final _dosage = TextEditingController();
   final _lot = TextEditingController();
   final _exp = TextEditingController();
 
+  // True means we are editing an existing vaccine.
   bool get _isEdit => widget.existing != null;
 
   @override
   void initState() {
     super.initState();
+
+    // Pick source data for initial field values.
+    // Existing vaccine for edit, or prefill for add.
     final Vaccine? seed = widget.existing ?? widget.prefill;
     if (seed != null) {
+      // Put initial values in the text boxes.
       _name.text = seed.name;
       _dosage.text = seed.dosage;
       _lot.text = seed.lotNumber;
@@ -162,10 +190,13 @@ class _VaccineFormPageState extends State<VaccineFormPage> {
   }
 
   bool _validateFields() {
+    // Read all fields and trim spaces.
     final name = _name.text.trim();
     final dosage = _dosage.text.trim();
     final lot = _lot.text.trim();
     final exp = _exp.text.trim();
+
+    // All fields are required.
     if (name.isEmpty || dosage.isEmpty || lot.isEmpty || exp.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('All vaccine fields are required.')),
@@ -176,37 +207,58 @@ class _VaccineFormPageState extends State<VaccineFormPage> {
   }
 
   Future<void> _submitAdd() async {
+    // Stop if form is not valid.
     if (!_validateFields()) return;
+
+    // Build Vaccine object from form text.
     final name = _name.text.trim();
     final dosage = _dosage.text.trim();
     final lot = _lot.text.trim();
     final exp = _exp.text.trim();
     final row = Vaccine(name: name, dosage: dosage, lotNumber: lot, expirationDate: exp);
+
+    // Save new vaccine in database using DAO.
     await DatabaseHolder.instance.vaccineDao.insertVaccine(row);
+
+    // Save same data as "previous vaccine" for copy option.
     await VaccinePreviousPrefs.saveLastCreated(row);
     if (!mounted) return;
+
+    // Show message and return true so list screen reloads.
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaccine saved.')));
     Navigator.of(context).pop(true);
   }
 
   Future<void> _submitUpdate() async {
+    // Stop if form is not valid.
     if (!_validateFields()) return;
+
+    // We need an id to update existing row.
     final id = widget.existing!.id;
     if (id == null) return;
+
+    // Build updated object using same id.
     final name = _name.text.trim();
     final dosage = _dosage.text.trim();
     final lot = _lot.text.trim();
     final exp = _exp.text.trim();
+
+    // Save updated vaccine in database using DAO.
     await DatabaseHolder.instance.vaccineDao.updateVaccine(
       Vaccine(id: id, name: name, dosage: dosage, lotNumber: lot, expirationDate: exp),
     );
     if (!mounted) return;
+
+    // Show message and return true so list screen reloads.
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaccine updated.')));
     Navigator.of(context).pop(true);
   }
 
   Future<void> _confirmDelete() async {
+    // Vaccine being edited right now.
     final v = widget.existing!;
+
+    // Ask user before deleting.
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -218,8 +270,12 @@ class _VaccineFormPageState extends State<VaccineFormPage> {
       ),
     );
     if (ok != true || !mounted) return;
+
+    // Delete from database using DAO.
     await DatabaseHolder.instance.vaccineDao.deleteVaccine(v);
     if (!mounted) return;
+
+    // Show message and return true so list screen reloads.
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaccine deleted.')));
     Navigator.of(context).pop(true);
   }
@@ -258,11 +314,13 @@ class _VaccineFormPageState extends State<VaccineFormPage> {
               ),
             ),
             const SizedBox(height: 16),
+            // In edit mode we show Update and Delete.
             if (_isEdit) ...[
               FilledButton(onPressed: _submitUpdate, child: const Text('Update')),
               const SizedBox(height: 8),
               FilledButton.tonal(onPressed: _confirmDelete, child: const Text('Delete')),
             ] else
+              // In add mode we only show Add button.
               FilledButton(onPressed: _submitAdd, child: const Text('Add vaccine')),
           ],
         ),
