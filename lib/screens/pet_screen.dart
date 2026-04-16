@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:encrypted_shared_preferences/encrypted_shared_preferences.dart';
 
+import '../app_localizations.dart';
 import '../data/database_holder.dart';
 import '../data/entities/pet.dart';
+import '../main.dart';
 import '../widgets/reactive_layout.dart';
 
 /// **Pets** module — list + SQLite + responsive detail (same pattern as [PetOwnerScreen]).
@@ -14,6 +16,7 @@ class PetScreen extends StatefulWidget {
 }
 
 class _PetScreenState extends State<PetScreen> {
+  String _t(String key) => AppLocalizations.of(context)?.translate(key) ?? key;
   /// Secure key-value store for "previous pet" and draft text.
   final EncryptedSharedPreferences _securePrefs = EncryptedSharedPreferences();
 
@@ -394,12 +397,22 @@ class _PetScreenState extends State<PetScreen> {
     final wide = shouldShowMasterDetailSideBySide(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pets'),
+        title: Text(_t('pets')),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.language),
+            onPressed: () {
+              final current = Localizations.localeOf(context);
+              MyApp.setLocale(
+                context,
+                current.languageCode == 'en' ? const Locale('fr') : const Locale('en'),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.note_add_outlined),
             onPressed: _promptNewPetChoice,
-            tooltip: 'New pet',
+            tooltip: _t('pet_new'),
           ),
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
         ],
