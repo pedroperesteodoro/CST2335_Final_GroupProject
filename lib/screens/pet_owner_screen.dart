@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../data/database_holder.dart';
 import '../data/entities/pet_owner.dart';
 import '../widgets/reactive_layout.dart';
 
-/// **Pet Owners** module — base scaffold: form + [ListView], SQLite via Floor, responsive details.
-///
-/// Teammate extends this with EncryptedSharedPreferences, full validation, ActionBar help, i18n, etc.
 class PetOwnerScreen extends StatefulWidget {
   const PetOwnerScreen({super.key});
 
@@ -15,11 +12,11 @@ class PetOwnerScreen extends StatefulWidget {
 }
 
 class _PetOwnerScreenState extends State<PetOwnerScreen> {
-  /// Rows shown in the list (loaded from SQLite on open and after writes).
   List<PetOwner> _rows = [];
-
-  /// When non-null on narrow screens, the UI shows the detail pane instead of the list.
   PetOwner? _selected;
+
+
+  final _storage = const FlutterSecureStorage();
 
   final _first = TextEditingController();
   final _last = TextEditingController();
@@ -43,7 +40,7 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
     super.dispose();
   }
 
-  /// SQLite.txt: load list when the screen starts (async → `setState` when data returns).
+  /// Reloads list from SQLite and updates the UI.
   Future<void> _reloadFromDb() async {
     final dao = DatabaseHolder.instance.petOwnerDao;
     final list = await dao.findAll();
@@ -51,163 +48,163 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
     setState(() => _rows = list);
   }
 
-  /// Minimal validation: assignment requires all except insurance before submit.
-  Future<void> _onAddPressed() async {
-    final first = _first.text.trim();
-    final last = _last.text.trim();
-    final address = _address.text.trim();
-    final dob = _dob.text.trim();
-    final ins = _insurance.text.trim();
+  Future<void> _saveToEncryptedStorage() async {
+    await _storage.write(key: 'last_first', value: _first.text);
+    await _storage.write(key: 'last_last', value: _last.text);
+    await _storage.write(key: 'last_address', value: _address.text);
+    await _storage.write(key: 'last_dob', value: _dob.text);
+  }
 
-    if (first.isEmpty || last.isEmpty || address.isEmpty || dob.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fill first name, last name, address, and DOB.')),
-      );
+  Future<void> _loadFromEncryptedStorage() async {
+    _first.text = await _storage.read(key: 'last_first') ?? "";
+    _last.text = await _storage.read(key: 'last_last') ?? "";
+    _address.text = await _storage.read(key: 'last_address') ?? "";
+    _dob.text = await _storage.read(key: 'last_dob') ?? "";
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fields copied from previous customer.')),
+    );
+  }
+
+  /// Add Logic with Requirement #5 (AlertDialog & Snackbar)
+  Future<void> _onAddPressed() async {
+    if (_first.text.isEmpty || _last.text.isEmpty || _address.text.isEmpty || _dob.text.isEmpty) {
+      _showSimpleDialog('Missing Data', 'Please fill all fields except Insurance.');
       return;
     }
 
     final row = PetOwner(
-      firstName: first,
-      lastName: last,
-      address: address,
-      dateOfBirth: dob,
-      insuranceNumber: ins.isEmpty ? null : ins,
+      firstName: _first.text,
+      lastName: _last.text,
+      address: _address.text,
+      dateOfBirth: _dob.text,
+      insuranceNumber: _insurance.text.isEmpty ? null : _insurance.text,
     );
 
     await DatabaseHolder.instance.petOwnerDao.insertPetOwner(row);
-    _first.clear();
-    _last.clear();
-    _address.clear();
-    _dob.clear();
-    _insurance.clear();
+    await _saveToEncryptedStorage(); // Save for future copying
+
+    _clearFields();
     await _reloadFromDb();
 
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pet owner saved to the database.')),
+      const SnackBar(content: Text('Customer successfully added!')),
     );
   }
 
-  /// Shows the course-required help text in a modal dialog (ActionBar item below).
-  void _showHelpDialog() {
-    showDialog<void>(
+  /// Logic to update an existing customer.
+  Future<void> _onUpdatePressed() async {
+    if (_selected == null) return;
+
+    final updated = PetOwner(
+      id: _selected!.id, // Keep the same ID to overwrite the row
+      firstName: _first.text,
+      lastName: _last.text,
+      address: _address.text,
+      dateOfBirth: _dob.text,
+      insuranceNumber: _insurance.text,
+    );
+
+    await DatabaseHolder.instance.petOwnerDao.updatePetOwner(updated);
+    await _reloadFromDb();
+    setState(() => _selected = updated);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Customer information updated.')),
+    );
+  }
+
+  void _clearFields() {
+    _first.clear(); _last.clear(); _address.clear(); _dob.clear(); _insurance.clear();
+  }
+
+  void _showSimpleDialog(String title, String message) {
+    showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('How to use — Pet Owners'),
-        content: const Text(
-          'Enter customer fields, tap Add customer, then tap a row to see details. '
-          'On a wide screen, details appear beside the list.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
-        ],
+        title: Text(title),
+        content: Text(message),
+        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
       ),
+    );
+  }
+
+  void _showHelpDialog() {
+    _showSimpleDialog(
+      'Pet Owner Instructions',
+      '1. Use the form to enter data.\n2. Tap "Add" to save.\n3. Tap "Copy Previous" to reload last entry.\n4. Select a name from the list to Update or Delete.',
     );
   }
 
   Widget _buildListPane() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(12),
           child: Column(
             children: [
-              TextField(
-                controller: _first,
-                decoration: const InputDecoration(labelText: 'First name', border: OutlineInputBorder()),
+              TextField(controller: _first, decoration: const InputDecoration(labelText: 'First Name')),
+              TextField(controller: _last, decoration: const InputDecoration(labelText: 'Last Name')),
+              TextField(controller: _address, decoration: const InputDecoration(labelText: 'Address')),
+              TextField(controller: _dob, decoration: const InputDecoration(labelText: 'Date of Birth')),
+              TextField(controller: _insurance, decoration: const InputDecoration(labelText: 'Insurance #')),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(onPressed: _onAddPressed, child: const Text('Add')),
+                  OutlinedButton(onPressed: _loadFromEncryptedStorage, child: const Text('Copy Previous')),
+                ],
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _last,
-                decoration: const InputDecoration(labelText: 'Last name', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _address,
-                decoration: const InputDecoration(labelText: 'Address', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _dob,
-                decoration: const InputDecoration(labelText: 'Date of birth (YYYY-MM-DD)', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _insurance,
-                decoration: const InputDecoration(labelText: 'Insurance # (optional)', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 8),
-              FilledButton(onPressed: _onAddPressed, child: const Text('Add customer')),
             ],
           ),
         ),
-        const Divider(height: 1),
+        const Divider(),
         Expanded(
-          child: _rows.isEmpty
-              ? const Center(child: Text('No customers yet.'))
-              : ListView.builder(
-                  itemCount: _rows.length,
-                  itemBuilder: (context, i) {
-                    final r = _rows[i];
-                    return ListTile(
-                      title: Text('${r.lastName}, ${r.firstName}'),
-                      subtitle: Text(r.address),
-                      onTap: () => setState(() => _selected = r),
-                    );
-                  },
-                ),
+          child: ListView.builder(
+            itemCount: _rows.length,
+            itemBuilder: (context, i) {
+              final r = _rows[i];
+              return ListTile(
+                title: Text('${r.lastName}, ${r.firstName}'),
+                subtitle: Text(r.address),
+                onTap: () {
+                  setState(() => _selected = r);
+                  // Populate fields for editing
+                  _first.text = r.firstName;
+                  _last.text = r.lastName;
+                  _address.text = r.address;
+                  _dob.text = r.dateOfBirth;
+                  _insurance.text = r.insuranceNumber ?? "";
+                },
+              );
+            },
+          ),
         ),
       ],
     );
   }
 
   Widget _buildDetailPane() {
-    final r = _selected;
-    if (r == null) {
-      return const Center(child: Text('Select a customer from the list.'));
-    }
+    if (_selected == null) return const Center(child: Text('Select a customer to view details.'));
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Details', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text('Name: ${r.firstName} ${r.lastName}'),
-          Text('Address: ${r.address}'),
-          Text('DOB: ${r.dateOfBirth}'),
-          Text('Insurance: ${r.insuranceNumber ?? '—'}'),
+          const Text('Customer Details', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const Spacer(),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              FilledButton.tonal(
-                onPressed: () {
-                  showDialog<void>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Delete customer?'),
-                      content: const Text('This removes the row from SQLite.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                        TextButton(
-                          onPressed: () async {
-                            Navigator.pop(ctx);
-                            await DatabaseHolder.instance.petOwnerDao.deletePetOwner(r);
-                            setState(() => _selected = null);
-                            await _reloadFromDb();
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Customer removed.')),
-                            );
-                          },
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  );
+              ElevatedButton(onPressed: _onUpdatePressed, child: const Text('Update')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red[100]),
+                onPressed: () async {
+                  await DatabaseHolder.instance.petOwnerDao.deletePetOwner(_selected!);
+                  setState(() => _selected = null);
+                  _reloadFromDb();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed.')));
                 },
-                child: const Text('Delete'),
+                child: const Text('Delete', style: TextStyle(color: Colors.red)),
               ),
             ],
           ),
@@ -219,41 +216,14 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
   @override
   Widget build(BuildContext context) {
     final wide = shouldShowMasterDetailSideBySide(context);
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pet Owners'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: _showHelpDialog,
-            tooltip: 'Help',
-          ),
-        ],
+        title: const Text('Pet Owners List'),
+        actions: [IconButton(icon: const Icon(Icons.help_outline), onPressed: _showHelpDialog)],
       ),
       body: wide
-          ? Row(
-              children: [
-                Expanded(flex: 5, child: _buildListPane()),
-                const VerticalDivider(width: 1),
-                Expanded(flex: 5, child: _buildDetailPane()),
-              ],
-            )
-          : _selected == null
-              ? _buildListPane()
-              : Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () => setState(() => _selected = null),
-                        icon: const Icon(Icons.arrow_back),
-                        label: const Text('Back to list'),
-                      ),
-                    ),
-                    Expanded(child: _buildDetailPane()),
-                  ],
-                ),
+          ? Row(children: [Expanded(child: _buildListPane()), const VerticalDivider(), Expanded(child: _buildDetailPane())])
+          : (_selected == null ? _buildListPane() : _buildDetailPane()),
     );
   }
 }
