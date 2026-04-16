@@ -15,7 +15,7 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
   List<PetOwner> _rows = [];
   PetOwner? _selected;
 
-  // Requirement #6: Use EncryptedSharedPreferences (Secure Storage in Flutter)
+
   final _storage = const FlutterSecureStorage();
 
   final _first = TextEditingController();
@@ -48,7 +48,6 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
     setState(() => _rows = list);
   }
 
-  /// Requirement #6: Save typed data securely to copy later.
   Future<void> _saveToEncryptedStorage() async {
     await _storage.write(key: 'last_first', value: _first.text);
     await _storage.write(key: 'last_last', value: _last.text);
@@ -56,7 +55,6 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
     await _storage.write(key: 'last_dob', value: _dob.text);
   }
 
-  /// Requirement #6: Load data from previous entry.
   Future<void> _loadFromEncryptedStorage() async {
     _first.text = await _storage.read(key: 'last_first') ?? "";
     _last.text = await _storage.read(key: 'last_last') ?? "";
@@ -71,7 +69,6 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
   /// Add Logic with Requirement #5 (AlertDialog & Snackbar)
   Future<void> _onAddPressed() async {
     if (_first.text.isEmpty || _last.text.isEmpty || _address.text.isEmpty || _dob.text.isEmpty) {
-      // Requirement #5: Show AlertDialog for notification
       _showSimpleDialog('Missing Data', 'Please fill all fields except Insurance.');
       return;
     }
@@ -90,7 +87,6 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
     _clearFields();
     await _reloadFromDb();
 
-    // Requirement #5: Show Snackbar
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Customer successfully added!')),
     );
@@ -132,7 +128,6 @@ class _PetOwnerScreenState extends State<PetOwnerScreen> {
     );
   }
 
-  /// Requirement #7: Help instructions in an AlertDialog.
   void _showHelpDialog() {
     _showSimpleDialog(
       'Pet Owner Instructions',
